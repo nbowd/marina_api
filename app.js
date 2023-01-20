@@ -30,10 +30,6 @@ function fromDatastore(item) {
     return item;
 }
 
-// I know this is bad but couldn't get env variables to work correctly
-const CLIENT_ID = '303793688714-nqts12gu1r01fof4rkscmnjnj92ous7k.apps.googleusercontent.com'
-const CLIENT_SECRET = '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'
-
 const client = new OAuth2Client(CLIENT_ID);
 
 // Code adapted from https://www.geeksforgeeks.org/generate-random-alpha-numeric-string-in-javascript/
@@ -115,46 +111,8 @@ async function get_boat(req) {
     });
 }
 
-async function put_boat(id, name, type, length, token) {
-    if (!token) {
-        return 401
-    }
-
-    let error = null;
-    let userid = await verify(token, error).catch(e => error = e);
-    if (error) {
-        return 401
-    }
-
+async function put_boat(req, id, name, type, length) {
     const key = datastore.key([BOAT, parseInt(id, 10)]);
-
-    if (typeof name !== "string"){
-        return 'invalid name'
-    }
-
-    if (name.length < 2 || name.length > 64) {
-        return 'invalid name'
-    }
-
-    if (!onlyLettersAndNumbersandSpaces(name)){
-        return 'invalid name'
-    }
-
-    if (typeof type !== "string") {
-        return 'invalid type'
-    }
-
-    if (!onlyLettersandSpaces(type)) {
-        return 'invalid type'
-    }
-
-    if (type.length < 2 || type.length > 30) {
-        return 'invalid type'
-    }
-
-    if (typeof length !== "number"){
-        return 'invalid length'
-    }
     
     return datastore.get(key).then( entity => {
         if (entity[0] === undefined || entity[0] === null) {
@@ -162,7 +120,7 @@ async function put_boat(id, name, type, length, token) {
             return 404;
         } else {
             const current_boat = entity.map(fromDatastore)[0];
-            if (current_boat.owner !== userid) {
+            if (current_boat.owner !== req.userid) {
                 return 403
             }
             const boat = {...current_boat, "name": name, "type": type, "length": length};
@@ -594,6 +552,69 @@ async function checkAndValidateJWT(req, res, next) {
     req.userid = userid
     next();
 }
+
+async function checkAndValidateBoatAttributes(req, res, next) {
+    if (Object.keys(req.body).length > 3) {
+        res.status(400).json({ 'Error': 'The request object has too many attributes. Must contain exactly: name, type, length' });
+        return
+    }
+    if (req.body.id) {
+        res.status(400).json({'Error': 'Editing the id of the boat is not allowed'})
+        return
+    }
+    if (req.method === 'POST' && (!req.body.name || !req.body.type || !req.body.length)) {
+        res.status(400).json({ 'Error': 'The request object is missing at least one of the required attributes' });
+        return
+    }
+    if (req.method === 'PUT' && (!req.body.name || !req.body.type || !req.body.length)) {
+        res.status(400).json({ 'Error': 'The request object is missing at least one of the required attributes' });
+        return
+    }
+    if (req.body.name) {
+        const name = req.body.name        
+        if (typeof name !== "string"){
+            res.status(400).json({'Error': 'Invalid name: must be alphanumeric/spaces and between 2 and 64 characters long'})
+            return
+        }
+    
+        if (name.length < 2 || name.length > 64) {
+            res.status(400).json({'Error': 'Invalid name: must be alphanumeric/spaces and between 2 and 64 characters long'})
+            return
+        }
+    
+        if (!onlyLettersAndNumbersandSpaces(name)){
+            res.status(400).json({'Error': 'Invalid name: must be alphanumeric/spaces and between 2 and 64 characters long'})
+            return
+        }
+    }
+
+    if (req.body.type) {
+        const type = req.body.type
+        if (typeof type !== "string") {
+            res.status(400).json({'Error': 'Invalid type: must contain only letters/spaces and between 2 and 30 characters long'});
+            return
+        }
+    
+        if (!onlyLettersandSpaces(type)) {
+            res.status(400).json({'Error': 'Invalid type: must contain only letters/spaces and between 2 and 30 characters long'});
+            return
+        }
+    
+        if (type.length < 2 || type.length > 30) {
+            res.status(400).json({'Error': 'Invalid type: must contain only letters/spaces and between 2 and 30 characters long'});
+            return
+        }
+    }
+
+    if (req.body.length) {
+        const length = req.body.length
+        if (typeof length !== "number"){
+            res.status(400).json({'Error': 'Invalid length: must be a number'});
+            return
+        }
+    }
+    next();
+}
 /* ------------- End Model Functions ------------- */
 
 /* ------------- Begin OAUTH Controller Functions ------------- */
@@ -713,11 +734,8 @@ router.post('/boats',
     checkAndValidateJWT, 
     checkContentTypes, 
     checkUnsupportedTypes, 
+    checkAndValidateBoatAttributes,
     function (req, res) {
-        if (!req.body.name || !req.body.type || !req.body.length) {
-            res.status(400).json({ 'Error': 'The request object is missing at least one of the required attributes' });
-            return
-        }
         post_boat(req, req.body.name, req.body.type, req.body.length)
             .then(boat => { 
                 res.status(201).json({ 
@@ -731,51 +749,26 @@ router.post('/boats',
             });
 });
 
-router.put('/boats/:id', function (req, res) {
-    const token = req.get('Authorization')? req.get('Authorization').slice(7): null
-
-    if (req.get('Content-type') !== 'application/json') {
-        return res.status(415).json({'Error': 'The request object is using an unsupported media type. This endpoint accepts only JSON'})
-    }
-    else if (req.get('Accept') !== 'application/json' && req.get('Accept') !== '*/*'){
-        return res.status(406).json({'Error': 'The request is only accepting an unsupported type'})
-    }
-    else if (Object.keys(req.body).length > 3) {
-        return res.status(400).json({ 'Error': 'The request object has too many attributes. Must contain exactly: name, type, length' });
-    }
-    else if (req.body.id) {
-        return res.status(400).json({'Error': 'Editing the id of the boat is not allowed'})
-    }
-    else if (!req.body.name || !req.body.type || !req.body.length) {
-        return res.status(400).json({ 'Error': 'The request object is missing at least one of the required attributes' });
-    }
-    else {
-    put_boat(req.params.id, req.body.name, req.body.type, req.body.length, token)
-        .then(boat => {
-            if (boat === 401) {
-                return res.status(401).json({'Error': "Invalid or missing token"})
-            }
-            else if (boat === 404) {
-                res.status(404).json({ 'Error': 'No boat with this boat_id exists' });                
-            }
-            else if (boat === 403) {
-                res.status(403).json({'Error': 'Not authorized to edit this boat'})
-            }
-            else if (boat === 'invalid name') {
-                return res.status(400).json({'Error': 'Invalid name: must be alphanumeric/spaces and between 2 and 64 characters long'})
-            }
-            else if (boat === 'invalid type'){
-                return res.status(400).json({'Error': 'Invalid type: must contain only letters/spaces and between 2 and 30 characters long'})
-            }
-            else if (boat === 'invalid length') {
-                return res.status(400).json({'Error': 'Invalid length: must be a number'})
-            }            
-            else {
-                res.status(303).set('Location', boat.self).send('Boat updated');
-            }
-        });
-    }
-});
+router.put('/boats/:id',     
+    checkAndValidateJWT, 
+    checkContentTypes, 
+    checkUnsupportedTypes,
+    checkAndValidateBoatAttributes,
+        function (req, res) {
+            put_boat(req, req.params.id, req.body.name, req.body.type, req.body.length)
+                .then(boat => {
+                    if (boat === 404) {
+                        res.status(404).json({ 'Error': 'No boat with this boat_id exists' });                
+                    }
+                    else if (boat === 403) {
+                        res.status(403).json({'Error': 'Not authorized to edit this boat'})
+                    }          
+                    else {
+                        res.status(303).set('Location', boat.self).send('Boat updated');
+                    }
+                });
+        }
+);
 
 router.patch('/boats/:id', function (req, res) {
     const token = req.get('Authorization')? req.get('Authorization').slice(7): null
