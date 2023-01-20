@@ -859,42 +859,23 @@ router.put('/loads/:id',
             });
 });
 
-router.patch('/loads/:id', function (req, res) {
-    if (req.get('Content-type') !== 'application/json') {
-        return res.status(415).json({'Error': 'The request object is using an unsupported media type. This endpoint accepts only JSON'})
-    }
-    else if (req.get('Accept') !== 'application/json' && req.get('Accept') !== '*/*'){
-        return res.status(406).json({'Error': 'The request is only accepting an unsupported type'})
-    }
-    else if (Object.keys(req.body).length > 3) {
-        return res.status(400).json({ 'Error': 'The request object has too many attributes. Must contain exactly: item, volume, creation_date' });
-    }
-    else if (req.body.id) {
-        return res.status(400).json({'Error': 'Editing the id of the load is not allowed'})
-    }
-    else {
-    patch_load(req.params.id, req.body.item, req.body.volume, req.body.creation_date)
-        .then(load => {
-            if (load === 404) {
-                res.status(404).json({ 'Error': 'No load with this load_id exists' });                
-            }
-            else if (load === 403) {
-                res.status(403).json({'Error': 'Not authorized to edit this load'})
-            }
-            else if (load === 'invalid item') {
-                return res.status(400).json({'Error': 'Invalid item: must be alphanumeric/spaces and between 2 and 64 characters long'})
-            }
-            else if (load === 'invalid creation date'){
-                return res.status(400).json({'Error': 'Invalid creation date: must be a string'})
-            }
-            else if (load === 'invalid volume') {
-                return res.status(400).json({'Error': 'Invalid volume: must be a number'})
-            }
-            else {
-                res.status(200).json(load);
-            }
-        });
-    }
+router.patch('/loads/:id', 
+    checkContentTypes,
+    checkUnsupportedTypes,
+    checkAndValidateLoadAttributes,
+    function (req, res) {
+        patch_load(req.params.id, req.body.item, req.body.volume, req.body.creation_date)
+            .then(load => {
+                if (load === 404) {
+                    res.status(404).json({ 'Error': 'No load with this load_id exists' });                
+                }
+                else if (load === 403) {
+                    res.status(403).json({'Error': 'Not authorized to edit this load'})
+                }
+                else {
+                    res.status(200).json(load);
+                }
+            });
 });
 
 router.put('/boats/:boat_id/loads/:load_id', function (req, res) {
