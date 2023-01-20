@@ -579,7 +579,7 @@ function get_users() {
     });
 }
 
-function unsupportedTypes(req, res, next) {
+function checkUnsupportedTypes(req, res, next) {
     if (req.get('Accept') !== 'application/json' && req.get('Accept') !== '*/*'){
         return res.status(406).json({'Error': 'The request is only accepting an unsupported type'})
     }
@@ -686,23 +686,12 @@ router.get('/oauth', async function (req, res) {
     `)
 });
 
-router.get('/boats', checkAndValidateJWT, function (req, res) {
-    // const token = req.get('Authorization')? req.get('Authorization').slice(7): null
-
-    if (req.get('Accept') !== 'application/json' && req.get('Accept') !== '*/*'){
-        return res.status(406).json({'Error': 'The request is only accepting an unsupported type'})
-    }
-    else {
-        const boats = get_boats(req)
-            .then((boats) => {
-                if (boats.error) {
-                    return res.status(401).json({'Error': boats.error})
-                } 
-                else {
-                    res.status(200).json(boats);
-                } 
-            });
-        }
+router.get('/boats', checkAndValidateJWT, checkUnsupportedTypes,  function (req, res) {
+    get_boats(req)
+        .then((boats) => {
+            res.status(200).json(boats)
+        });
+        
 });
 
 router.get('/boats/:id', function (req, res) {
