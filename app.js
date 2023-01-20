@@ -246,30 +246,8 @@ async function post_load(item, volume, creation_date) {
 }
 
 async function put_load(id, item, volume, creation_date) {
-
     const key = datastore.key([LOAD, parseInt(id, 10)]);
 
-    if (typeof item !== "string"){
-        return 'invalid item'
-    }
-
-    if (item.length < 2 || item.length > 64) {
-        return 'invalid item'
-    }
-
-    if (!onlyLettersAndNumbersandSpaces(item)){
-        return 'invalid item'
-    }
-
-    if (typeof volume !== "number") {
-        return 'invalid volume'
-    }
-
-
-    if (typeof creation_date !== "string"){
-        return 'invalid creation date'
-    }
-    
     return datastore.get(key).then( entity => {
         if (entity[0] === undefined || entity[0] === null) {
             // No entity found. Don't try to add the id attribute
@@ -574,6 +552,61 @@ async function checkAndValidateBoatAttributes(req, res, next) {
     }
     next();
 }
+
+function checkAndValidateLoadAttributes(req, res, next) {
+    if (Object.keys(req.body).length > 3) {
+        res.status(400).json({ 'Error': 'The request object has too many attributes. Must contain exactly: item, volume, creation_date' });
+        return
+    }
+    if (req.body.id) {
+        res.status(400).json({'Error': 'Editing the id of the load is not allowed'})
+        return
+    }
+    if (req.method === 'POST' && (!req.body.item || !req.body.volume || !req.body.creation_date)) {
+        res.status(400).json({ 'Error': 'The request object is missing at least one of the required attributes' });
+        return
+    }
+    if (req.method === 'PUT' && (!req.body.item || !req.body.volume || !req.body.creation_date)) {
+        res.status(400).json({ 'Error': 'The request object is missing at least one of the required attributes' });
+        return
+    }
+
+    if (req.body.item) {
+        const item = req.body.item
+        if (typeof item !== "string"){
+            res.status(400).json({'Error': 'Invalid item: must be alphanumeric/spaces and between 2 and 64 characters long'});
+            return
+        }
+    
+        if (item.length < 2 || item.length > 64) {
+            res.status(400).json({'Error': 'Invalid item: must be alphanumeric/spaces and between 2 and 64 characters long'});
+            return
+        }
+    
+        if (!onlyLettersAndNumbersandSpaces(item)){
+            res.status(400).json({'Error': 'Invalid item: must be alphanumeric/spaces and between 2 and 64 characters long'});
+            return
+        }
+    }
+
+    if (req.body.volume) {
+        const volume = req.body.volume
+        if (typeof volume !== "number") {
+            res.status(400).json({'Error': 'Invalid volume: must be a number'});
+            return
+        }
+    }
+
+    if (req.body.creation_date) {
+        const creation_date = req.body.creation_date
+        if (typeof creation_date !== "string"){
+            res.status(400).json({'Error': 'Invalid creation date: must be a string'});
+            return
+        }
+    }
+
+    next();
+}
 /* ------------- End Model Functions ------------- */
 
 /* ------------- Begin OAUTH Controller Functions ------------- */
@@ -797,11 +830,8 @@ router.get('/loads/:id',
 router.post('/loads', 
     checkContentTypes, 
     checkUnsupportedTypes,
+    checkAndValidateLoadAttributes,
     function (req, res) {
-    if (!req.body.item || !req.body.volume || !req.body.creation_date) {
-        return res.status(400).json({ 'Error': 'The request object is missing at least one of the required attributes' });
-    }
-    else {
         post_load(req.body.item, req.body.volume, req.body.creation_date)
             .then(boat => { res.status(201).json({ 
                 "id": boat.key.id, 
@@ -811,45 +841,22 @@ router.post('/loads',
                 "carrier": boat.data.carrier, 
                 "self": boat.data.self}) 
             });
-    }
 });
 
-router.put('/loads/:id', function (req, res) {
-    if (req.get('Content-type') !== 'application/json') {
-        return res.status(415).json({'Error': 'The request object is using an unsupported media type. This endpoint accepts only JSON'})
-    }
-    else if (req.get('Accept') !== 'application/json' && req.get('Accept') !== '*/*'){
-        return res.status(406).json({'Error': 'The request is only accepting an unsupported type'})
-    }
-    else if (Object.keys(req.body).length > 3) {
-        return res.status(400).json({ 'Error': 'The request object has too many attributes. Must contain exactly: item, volume, creation_date' });
-    }
-    else if (req.body.id) {
-        return res.status(400).json({'Error': 'Editing the id of the load is not allowed'})
-    }
-    else if (!req.body.item || !req.body.volume || !req.body.creation_date) {
-        return res.status(400).json({ 'Error': 'The request object is missing at least one of the required attributes' });
-    }
-    else {
-    put_load(req.params.id, req.body.item, req.body.volume, req.body.creation_date)
-        .then(load => {
-            if (load === 404) {
-                res.status(404).json({ 'Error': 'No load with this load_id exists' });                
-            }
-            else if (load === 'invalid item') {
-                return res.status(400).json({'Error': 'Invalid item: must be alphanumeric/spaces and between 2 and 64 characters long'})
-            }
-            else if (load === 'invalid volume'){
-                return res.status(400).json({'Error': 'Invalid volume: must be a number'})
-            }
-            else if (load === 'invalid creation date') {
-                return res.status(400).json({'Error': 'Invalid creation date: must be a string'})
-            }            
-            else {
-                res.status(303).set('Location', load.self).send('Load updated');
-            }
-        });
-    }
+router.put('/loads/:id', 
+    checkUnsupportedTypes,
+    checkContentTypes,
+    checkAndValidateLoadAttributes,
+    function (req, res) {
+        put_load(req.params.id, req.body.item, req.body.volume, req.body.creation_date)
+            .then(load => {
+                if (load === 404) {
+                    res.status(404).json({ 'Error': 'No load with this load_id exists' });                
+                }
+                else {
+                    res.status(303).set('Location', load.self).send('Load updated');
+                }
+            });
 });
 
 router.patch('/loads/:id', function (req, res) {
