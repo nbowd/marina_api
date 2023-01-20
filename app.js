@@ -794,19 +794,23 @@ router.get('/loads/:id',
             });
 });
 
-router.post('/loads', function (req, res) {
-    if (req.get('Content-type') !== 'application/json') {
-        return res.status(415).json({'Error': 'The request object is using an unsupported media type. This endpoint accepts only JSON'})
-    }
-    else if (req.get('Accept') !== 'application/json' && req.get('Accept') !== '*/*'){
-        return res.status(406).json({'Error': 'The request is only accepting an unsupported type'})
-    }
-    else if (!req.body.item || !req.body.volume || !req.body.creation_date) {
+router.post('/loads', 
+    checkContentTypes, 
+    checkUnsupportedTypes,
+    function (req, res) {
+    if (!req.body.item || !req.body.volume || !req.body.creation_date) {
         return res.status(400).json({ 'Error': 'The request object is missing at least one of the required attributes' });
     }
     else {
         post_load(req.body.item, req.body.volume, req.body.creation_date)
-            .then(boat => { res.status(201).json({ "id": boat.key.id, "item": boat.data.item , "volume": boat.data.volume, "creation_date": boat.data.creation_date, "carrier": boat.data.carrier, "self": boat.data.self}) });
+            .then(boat => { res.status(201).json({ 
+                "id": boat.key.id, 
+                "item": boat.data.item , 
+                "volume": boat.data.volume, 
+                "creation_date": boat.data.creation_date, 
+                "carrier": boat.data.carrier, 
+                "self": boat.data.self}) 
+            });
     }
 });
 
