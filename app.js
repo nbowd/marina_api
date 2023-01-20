@@ -770,23 +770,18 @@ router.delete('/boats/:id',
 });
 
 
-router.get('/loads', function (req, res) {
-    if (req.get('Accept') !== 'application/json' && req.get('Accept') !== '*/*'){
-        return res.status(406).json({'Error': 'The request is only accepting an unsupported type'})
-    }
-    else {
-        const loads = get_loads(req)
+router.get('/loads', 
+    checkUnsupportedTypes,
+    function (req, res) {
+        get_loads(req)
             .then((loads) => {
                 res.status(200).json(loads);
             });
-    }
 });
 
-router.get('/loads/:id', function (req, res) {
-    if (req.get('Accept') !== 'application/json' && req.get('Accept') !== '*/*'){
-        return res.status(406).json({'Error': 'The request is only accepting an unsupported type'})
-    }
-    else {
+router.get('/loads/:id', 
+    checkUnsupportedTypes,
+    function (req, res) {
         get_load(req.params.id)
             .then(load => {
                 if (load[0] === undefined || load[0] === null) {
@@ -797,7 +792,6 @@ router.get('/loads/:id', function (req, res) {
                     res.status(200).json(load[0]);
                 }
             });
-    };
 });
 
 router.post('/loads', function (req, res) {
