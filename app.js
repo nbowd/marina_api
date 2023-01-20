@@ -200,7 +200,9 @@ async function delete_boat(req, id) {
     await datastore.delete(key);
     return 204
 }
+/* ------------- End Boat Model Functions ------------- */
 
+/* ------------- Begin Load Model Functions ------------- */
 function get_loads(req) {
     let current_limit = 5;
     let current_offset = 0;
@@ -455,14 +457,18 @@ async function delete_load(id) {
     return 204
 
 }
+/* ------------- End Load Model Functions ------------- */
 
+/* ------------- Begin Users Model Functions ------------- */
 function get_users() {
     const q = datastore.createQuery(USER);
     return datastore.runQuery(q).then((entities) => {
         return entities[0].map(fromDatastore);
     });
 }
+/* ------------- End Model Functions ------------- */
 
+/* ------------- Begin Middleware Functions ------------- */
 function checkUnsupportedTypes(req, res, next) {
     if (req.get('Accept') !== 'application/json' && req.get('Accept') !== '*/*'){
         return res.status(406).json({'Error': 'The request is only accepting an unsupported type'})
@@ -607,7 +613,7 @@ function checkAndValidateLoadAttributes(req, res, next) {
 
     next();
 }
-/* ------------- End Model Functions ------------- */
+/* ------------- End Middleware Functions ------------- */
 
 /* ------------- Begin OAUTH Controller Functions ------------- */
 router.get('/', function (req, res) {
@@ -693,7 +699,9 @@ router.get('/oauth', async function (req, res) {
         </div>
     `)
 });
+/* ------------- End OAUTH Controller Functions ------------- */
 
+/* ------------- Begin Boats Controller Functions ------------- */
 router.get('/boats', 
     checkAndValidateJWT, 
     checkUnsupportedTypes,  
@@ -802,7 +810,9 @@ router.delete('/boats/:id',
             })
 });
 
+/* ------------- End Boat Controller Functions ------------- */
 
+/* ------------- Begin Loads Controller Functions ------------- */
 router.get('/loads', 
     checkUnsupportedTypes,
     function (req, res) {
@@ -912,7 +922,9 @@ router.delete('/loads/:id', function (req, res) {
         }
     })
 });
+/* ------------- End Loads Controller Functions ------------- */
 
+/* ------------- Begin Users Controller Functions ------------- */
 router.get('/users', function (req, res) {
     if (req.get('Accept') !== 'application/json' && req.get('Accept') !== '*/*'){
         return res.status(406).json({'Error': 'The request is only accepting an unsupported type'})
@@ -936,7 +948,7 @@ router.patch('/users/:id', function (req, res) {
 router.delete('/users/:id', function (req, res) {
     return res.status(405).set("Allow", "GET").send("Not Acceptable");
 });
-/* ------------- End Controller Functions ------------- */
+/* ------------- End Users Controller Functions ------------- */
 
 
 app.use('/', router);
