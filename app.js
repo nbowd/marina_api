@@ -30,6 +30,10 @@ function fromDatastore(item) {
     return item;
 }
 
+// I know this is bad but couldn't get env variables to work correctly
+const CLIENT_ID = '303793688714-nqts12gu1r01fof4rkscmnjnj92ous7k.apps.googleusercontent.com'
+const CLIENT_SECRET = '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'
+
 const client = new OAuth2Client(CLIENT_ID);
 
 // Code adapted from https://www.geeksforgeeks.org/generate-random-alpha-numeric-string-in-javascript/
@@ -99,29 +103,20 @@ async function get_boats(req) {
 
 }
 
-async function get_boat(id, token) {
-    if (!token) {
-        return 401
-    }
+async function get_boat(req) {
+    const key = datastore.key([BOAT, parseInt(req.params.id, 10)]);
 
-    let error = null;
-    let userid = await verify(token, error).catch(e => error = e);
-    if (error) {
-        return 401
-    }
-
-    const key = datastore.key([BOAT, parseInt(id, 10)]);
     return datastore.get(key).then((entity) => {
         if (entity[0] === undefined || entity[0] === null) {
             // No entity found. Don't try to add the id attribute
-            return entity;
+            return entity[0];
         } else {
             const all_boats = entity.map(fromDatastore);
-            const filtered_boats = all_boats.filter(b => b.owner === userid)
+            const filtered_boats = all_boats.filter(b => b.owner === req.userid)
             if (filtered_boats.length === 0) {
                 return 403
             }
-            return filtered_boats
+            return filtered_boats[0]
         }
     });
 }
@@ -686,38 +681,32 @@ router.get('/oauth', async function (req, res) {
     `)
 });
 
-router.get('/boats', checkAndValidateJWT, checkUnsupportedTypes,  function (req, res) {
-    get_boats(req)
-        .then((boats) => {
-            res.status(200).json(boats)
-        });
-        
+router.get('/boats', 
+    checkAndValidateJWT, 
+    checkUnsupportedTypes,  
+    function (req, res) {
+        get_boats(req)
+            .then((boats) => {
+                res.status(200).json(boats)
+            });  
 });
 
-router.get('/boats/:id', function (req, res) {
-    const token = req.get('Authorization')? req.get('Authorization').slice(7): null
-
-    if (req.get('Accept') !== 'application/json' && req.get('Accept') !== '*/*'){
-        return res.status(406).json({'Error': 'The request is only accepting an unsupported type'})
-    }
-    else {
-        get_boat(req.params.id, token)
+router.get('/boats/:id', 
+    checkAndValidateJWT, 
+    checkUnsupportedTypes, 
+    function (req, res) {
+        get_boat(req)
             .then(boat => {
-                if (boat === 401) {
-                    return res.status(401).json({'Error': "Invalid or missing token"})
-                } 
-                else if (boat === 403) {
-                    return res.status(403).json({'Error': "Not authorized to view this boat"})
-                }
-                else if (boat[0] === undefined || boat[0] === null) {
-                    // The 0th element is undefined. This means there is no boat with this id
+                if (boat === null || boat === undefined) {
                     res.status(404).json({ 'Error': 'No boat with this boat_id exists' });
-                } else {
-                    // Return the 0th element which is the boat with this id
-                    res.status(200).json(boat[0]);
+                    return
+                }  
+                if (boat === 403) {
+                    res.status(403).json({'Error': "Not authorized to view this boat"})
+                    return
                 }
-            });
-        }
+                res.status(200).json(boat);
+            }); 
 });
 
 router.post('/boats', function (req, res) {
