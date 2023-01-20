@@ -1,16 +1,3 @@
-// Copyright 2017 Google LLC
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
 
 // [START gae_flex_datastore_app]
 'use strict';
@@ -26,7 +13,9 @@ app.enable('trust proxy');
 const { Datastore } = require('@google-cloud/datastore');
 const bodyParser = require('body-parser');
 
-const datastore = new Datastore();
+const datastore = new Datastore({
+    projectId: 'portfolio-bowdenn',
+  });
 
 const BOAT = "Boat";
 const LOAD = "Load";
@@ -68,31 +57,10 @@ function onlyLettersandSpaces(str) {
     return /^[A-Za-z\s]*$/.test(str);
 }
 /* ------------- Begin Boat Model Functions ------------- */
-// OLD FUNCTION
-// async function post_boat(name, type, length, publicBool, token) {
-//     if (!token) {
-//         return {"error": "Invalid or missing token"}
-//     }
-
-//     let error = null;
-//     let userid = await verify(token, error).catch(e => error = e);
-//     if (error) {
-//         return {"error": "Invalid or missing token"}
-//     }
-
-//     var key = datastore.key(BOAT);
-//     const boat_info = { "name": name, "type": type, "length": length, "public": publicBool, "owner": userid};
-//     const boat = { "key": key, "data": boat_info }
-//     await datastore.save(boat)
-
-//     return boat
-// }
-
 async function post_boat(name, type, length, token) {
     if (!token) {
         return {"error": "Invalid or missing token"}
     }
-
     let error = null;
     let userid = await verify(token, error).catch(e => error = e);
     if (error) {
@@ -102,29 +70,13 @@ async function post_boat(name, type, length, token) {
     var key = datastore.key(BOAT);
     const boat_info = { "name": name, "type": type, "length": length, "owner": userid, "loads": [], "self": ""};
     await datastore.save({ "key": key, "data": boat_info })
-    const new_info = {...boat_info, "self": "https://a7-bowdenn.wl.r.appspot.com/boats/"+ key.id}
+    const new_info = {...boat_info, "self": "https://portfolio-bowdenn.wl.r.appspot.com/boats/"+ key.id}
     const new_boat = { "key": key, "data": new_info }
     await datastore.save(new_boat)
     return new_boat
 }
 
-
-
-
-function get_owner_boats(id) {
-    const q = datastore.createQuery(BOAT);
-    return datastore.runQuery(q).then((entities) => {
-        // Use Array.map to call the function fromDatastore. This function
-        // adds id attribute to every element in the array at element 0 of
-        // the variable entities
-        const all_boats = entities[0].map(fromDatastore);
-        const filtered_boats = all_boats.filter(b => b.owner === id && b.public === true)         
-        return filtered_boats
-    });
-}
-
-async function get_boats(token, req) {
-
+async function get_boats(req) {
     let current_limit = 5;
     let current_offset = 0;
     if (Object.keys(req.query).includes('limit')) {
@@ -135,22 +87,12 @@ async function get_boats(token, req) {
     }
     let next_offset = parseInt(current_offset) + parseInt(current_limit)
 
-    if (!token) {
-        return {"error": "Invalid or missing token"}
-    }
-
-    let error = null;
-    let userid = await verify(token, error).catch(e => error = e);
-    if (error) {
-        return {"error": "Invalid or missing token"}
-    }
-
     const q = datastore.createQuery(BOAT);
     return datastore.runQuery(q).then((entities) => {
         const all_boats = entities[0].map(fromDatastore);
-        const filtered_boats = all_boats.filter(b => b.owner === userid) 
+        const filtered_boats = all_boats.filter(b => b.owner === req.userid) 
 
-        let result = {"boats": filtered_boats.slice(current_offset, next_offset), "next": next_offset >= filtered_boats.length? null: `https://a7-bowdenn.wl.r.appspot.com/boats?offset=${next_offset}`}
+        let result = {"boats": filtered_boats.slice(current_offset, next_offset), "next": next_offset >= filtered_boats.length? null: `https://portfolio-bowdenn.wl.r.appspot.com/boats?offset=${next_offset}`}
 
         return result
     });
@@ -174,8 +116,6 @@ async function get_boat(id, token) {
             // No entity found. Don't try to add the id attribute
             return entity;
         } else {
-            // Use Array.map to call the function fromDatastore. This function
-            // adds id attribute to every element in the array entity
             const all_boats = entity.map(fromDatastore);
             const filtered_boats = all_boats.filter(b => b.owner === userid)
             if (filtered_boats.length === 0) {
@@ -226,21 +166,6 @@ async function put_boat(id, name, type, length, token) {
     if (typeof length !== "number"){
         return 'invalid length'
     }
-
-    // let duplicate_boat = false;
-
-    // const q = datastore.createQuery(BOAT);
-    // await datastore.runQuery(q).then((entities) => {
-    //     let all_boats = entities[0].map(fromDatastore);
-
-    //     let match_boat = all_boats.filter(b => b.name === name && b.id !== id)
-
-    //     duplicate_boat = match_boat.length !== 0
-    // });
-    
-    // if (duplicate_boat) {
-    //     return 403
-    // }
     
     return datastore.get(key).then( entity => {
         if (entity[0] === undefined || entity[0] === null) {
@@ -319,64 +244,9 @@ async function patch_boat(id, name, type, length, token) {
 
     const boat = {...current_boat, "name": name? name: current_boat.name, "type": type? type: current_boat.type, "length": length? length: current_boat.length, "self": current_boat.self };
     
-    // let duplicate_boat = false;
-
-    // const q = datastore.createQuery(BOAT);
-    // await datastore.runQuery(q).then((entities) => {
-    //     let all_boats = entities[0].map(fromDatastore);
-
-    //     let match_boat = all_boats.filter(b => b.name === boat.name && b.id !== id)
-
-    //     duplicate_boat = match_boat.length !== 0
-    // });
-    
-    // if (duplicate_boat) {
-    //     return 403
-    // }
-    
     await datastore.save({ "key": key, "data": boat });
     return boat  
 }
-
-// OLD FUNCTION
-// async function get_boats(token) {
-//     if (!token) {
-//         const q = datastore.createQuery(BOAT);
-//         return datastore.runQuery(q).then((entities) => {
-//             // Use Array.map to call the function fromDatastore. This function
-//             // adds id attribute to every element in the array at element 0 of
-//             // the variable entities
-//             const all_boats = entities[0].map(fromDatastore);
-//             const filtered_boats = all_boats.filter(b => b.public === true) 
-//             return filtered_boats
-//         });
-//     }
-
-//     let error = null;
-//     let userid = await verify(token, error).catch(e => error = e);
-//     if (error) {
-//         const q = datastore.createQuery(BOAT);
-//         return datastore.runQuery(q).then((entities) => {
-//             // Use Array.map to call the function fromDatastore. This function
-//             // adds id attribute to every element in the array at element 0 of
-//             // the variable entities
-//             const all_boats = entities[0].map(fromDatastore);
-//             const filtered_boats = all_boats.filter(b => b.public === true) 
-//             return filtered_boats
-//         });
-//     }
-
-//     const q = datastore.createQuery(BOAT);
-//     return datastore.runQuery(q).then((entities) => {
-//         // Use Array.map to call the function fromDatastore. This function
-//         // adds id attribute to every element in the array at element 0 of
-//         // the variable entities
-//         const all_boats = entities[0].map(fromDatastore);
-//         const filtered_boats = all_boats.filter(b => b.owner === userid) 
-//         return filtered_boats
-//     });
-
-// }
 
 async function delete_boat(id,token) {
     if (!token) {
@@ -395,15 +265,10 @@ async function delete_boat(id,token) {
 
     await datastore.get(key).then(entity => {
         if (entity[0] === undefined || entity[0] === null) {
-            // No entity found. Don't try to add the id attribute
-          
             invalid_boat = true
-            console.log('invalid boat', invalid_boat)  
         } else {
             invalid_boat = false
-            console.log('valid boat', invalid_boat)
             current_boat = entity.map(fromDatastore)[0]
-
         }
     })
 
@@ -419,7 +284,6 @@ async function delete_boat(id,token) {
         await current_boat.loads.map(l => {
             const load_key = datastore.key([LOAD, parseInt(l.id, 10)]);
             datastore.get(load_key).then(entity=> {
-                console.log("current inside", entity.map(fromDatastore)[0])
                 current_load = entity.map(fromDatastore)[0]
                 const new_load = {...current_load, "carrier":null}
                 datastore.save({ "key": load_key, "data": new_load })
@@ -445,7 +309,7 @@ function get_loads(req) {
     const q = datastore.createQuery(LOAD);
     return datastore.runQuery(q).then((entities) => {
         let all_loads = entities[0].map(fromDatastore);
-        let result = {"loads": all_loads.slice(current_offset, next_offset), "next": next_offset >= all_loads.length? null: `https://a7-bowdenn.wl.r.appspot.com/loads?offset=${next_offset}`}
+        let result = {"loads": all_loads.slice(current_offset, next_offset), "next": next_offset >= all_loads.length? null: `https://portfolio-bowdenn.wl.r.appspot.com/loads?offset=${next_offset}`}
         return result
 
     });
@@ -469,7 +333,7 @@ async function post_load(item, volume, creation_date) {
     var key = datastore.key(LOAD);
     const load_info = { "item": item, "volume": volume, "creation_date": creation_date, "carrier": null, "self": ""};
     await datastore.save({ "key": key, "data": load_info })
-    const new_info = {...load_info, "self": "https://a7-bowdenn.wl.r.appspot.com/loads/"+ key.id}
+    const new_info = {...load_info, "self": "https://portfolio-bowdenn.wl.r.appspot.com/loads/"+ key.id}
     const new_load = { "key": key, "data": new_info }
     await datastore.save(new_load)
     return new_load
@@ -551,9 +415,7 @@ async function patch_load(id, item, volume, creation_date) {
         return 404
     }
 
-
     const load = {...current_load, "item": item? item: current_load.item, "creation_date": creation_date? creation_date: current_load.creation_date, "volume": volume? volume: current_load.volume, "self": current_load.self };
-    
     
     await datastore.save({ "key": key, "data": load });
     return load  
@@ -568,18 +430,13 @@ async function put_load_on_boat(load_id, boat_id) {
     let occupied_load = null;
     let current_boat = null;
     let current_load = null;
-    // console.log("keys",slip_key, boat_key);
     
     await datastore.get(load_key).then(entity => {
         if (entity[0] === undefined || entity[0] === null) {
-            // No entity found. Don't try to add the id attribute
             invalid_load = true;
-            console.log('invalid load', invalid_load)
-
         } else {
             invalid_load = false;
             current_load = entity.map(fromDatastore)[0]
-            console.log('valid load', invalid_load)
         }
     })
 
@@ -587,25 +444,20 @@ async function put_load_on_boat(load_id, boat_id) {
         if (entity[0] === undefined || entity[0] === null) {
             // No entity found. Don't try to add the id attribute
             invalid_boat = true
-            console.log('invalid boat', invalid_boat)  
         } else {
             invalid_boat = false
             current_boat = entity.map(fromDatastore)[0]
-            console.log('valid boat', current_boat)
         }
     })
 
-    console.log("await results",invalid_boat, invalid_load)
     if (invalid_load || invalid_boat) {
         return 404;
     }
 
     await datastore.get(load_key).then(load => {
         let load_info = load.map(fromDatastore)
-        console.log("load info", load_info)
         if (load_info[0].carrier !== null) {
             occupied_load = true;
-            console.log("occupied load")
         } else {
             occupied_load = false;
         }
@@ -615,19 +467,14 @@ async function put_load_on_boat(load_id, boat_id) {
         return 403
     }
 
-    console.log('empty load, valid boats, valid load')
     await datastore.get(load_key).then(load => {
-        console.log('current load', load[0])
         const new_load = {...load[0], "carrier": {"id": current_boat.id, "name": current_boat.name, "self":current_boat.self}}
-        console.log('new load', new_load)
         datastore.save({"key": load_key, "data": new_load})
         
     })
 
     await datastore.get(boat_key).then(boat => {
-        console.log('current boat', boat[0])
         const new_boat = {...boat[0], "loads": [...current_boat.loads, {"id": current_load.id, "self": current_load.self}]}
-        console.log('new boat', new_boat)
         datastore.save({"key": boat_key, "data":new_boat})
     })
     return 204;
@@ -645,32 +492,21 @@ async function remove_load_from_boat(boat_id, load_id) {
     
     await datastore.get(load_key).then(entity => {
         if (entity[0] === undefined || entity[0] === null) {
-            // No entity found. Don't try to add the id attribute
             invalid_load = true;
-            console.log('invalid load', invalid_load)
-
         } else {
             invalid_load = false;
             current_load = entity.map(fromDatastore)[0]
-            console.log('valid load', invalid_load)
-
         }
     })
     await datastore.get(boat_key).then(entity => {
         if (entity[0] === undefined || entity[0] === null) {
-            // No entity found. Don't try to add the id attribute
-          
             invalid_boat = true
-            console.log('invalid boat', invalid_boat)  
         } else {
             invalid_boat = false
             current_boat = entity.map(fromDatastore)[0]
-            console.log('valid boat', invalid_boat)
-
         }
     })
 
-    console.log("await results delete:", invalid_load,invalid_boat)
     if (invalid_load || invalid_boat) {
         return 404;
     }
@@ -687,7 +523,7 @@ async function remove_load_from_boat(boat_id, load_id) {
     if (id_mismatch) {
         return 404
     }
-    // console.log("current boat load is", boat_load_ids)
+
     let new_load = {...current_load, "carrier": null}
     await datastore.save({"key": load_key, "data": new_load})
 
@@ -704,15 +540,10 @@ async function delete_load(id) {
     let current_load = null;
     await datastore.get(key).then(entity => {
         if (entity[0] === undefined || entity[0] === null) {
-            // No entity found. Don't try to add the id attribute
-          
             invalid_load = true
-            console.log('invalid load', invalid_load)  
         } else {
             invalid_load = false
             current_load = entity.map(fromDatastore)[0]
-            console.log('valid load', invalid_load)
-
         }
     })
 
@@ -721,18 +552,14 @@ async function delete_load(id) {
     }
 
     if (current_load.carrier) {
-        console.log("current load", current_load, "carrier id", current_load.carrier.id)
         let boat_key = datastore.key([BOAT, parseInt(current_load.carrier.id, 10)]);
-        console.log("boat key?", boat_key)
         let current_boat = null;
         
         await datastore.get(boat_key).then(entity => {
             if (entity[0] === undefined || entity[0] === null) {
                 // No entity found. Don't try to add the id attribute
-                console.log('invalid boat', invalid_load)  
             } else {
                 current_boat = entity.map(fromDatastore)[0]
-                console.log('valid boat', invalid_load)
             }
         })
 
@@ -748,13 +575,30 @@ async function delete_load(id) {
 function get_users() {
     const q = datastore.createQuery(USER);
     return datastore.runQuery(q).then((entities) => {
-        // Use Array.map to call the function fromDatastore. This function
-        // adds id attribute to every element in the array at element 0 of
-        // the variable entities
         return entities[0].map(fromDatastore);
     });
 }
 
+function unsupportedTypes(req, res, next) {
+    if (req.get('Accept') !== 'application/json' && req.get('Accept') !== '*/*'){
+        return res.status(406).json({'Error': 'The request is only accepting an unsupported type'})
+    }
+    next();    
+}
+
+async function checkAndValidateJWT(req, res, next) {
+    const token = req.get('Authorization')? req.get('Authorization').slice(7): null
+    if (!token) {
+        return res.status(401).json({"Error": "Invalid or missing token"})
+    }
+    let error = null;
+    let userid = await verify(token, error).catch(e => error = e);
+    if (error) {
+        return res.status(401).json({"Error": "Invalid or missing token"})
+    }
+    req.userid = userid
+    next();
+}
 /* ------------- End Model Functions ------------- */
 
 /* ------------- Begin OAUTH Controller Functions ------------- */
@@ -762,20 +606,17 @@ router.get('/', function (req, res) {
     return res.send(`
         <div style="display:flex; justify-content:center;">
             <div style="display:flex; flex-direction:column; justify-content:center; width:400px;">
-                <h1 style="font-weight:bold;" >Welcome to bowdenn's OAUTH Application </h1>
+                <h1 style="font-weight:bold;" >Welcome to bowdenn's Portfolio Application </h1>
                 <p>By clicking the button below, you will be redirect to login with a google account and the permission to access your email and profile will be requested. You will then be redirected to another page where your first and last name will be displayed, as well as the state variable used to secure the redirect.</p>
-                <a href='//a7-bowdenn.wl.r.appspot.com/auth' style="text-decoration:none; background-color:gray; border: 1px solid black; border-radius: 12px; width: 80px; height: 28px;text-align: center; color: white; line-height: 28px" > Sign In </a>
+                <a href='//portfolio-bowdenn.wl.r.appspot.com/auth' style="text-decoration:none; background-color:gray; border: 1px solid black; border-radius: 12px; width: 80px; height: 28px;text-align: center; color: white; line-height: 28px" > Sign In </a>
             </div> 
         </div> 
     `)
 });
 
 router.get('/auth', async function (req, res) {
-    // var key = datastore.key(STATE);
     const state = generateState();
-    // await datastore.save({ "key": key, "data": { "state": state } })
-
-    return res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id=${CLIENT_ID}&redirect_uri=https://a7-bowdenn.wl.r.appspot.com/oauth&scope=profile&state=${state}`
+    return res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?response_type=code&client_id=${CLIENT_ID}&redirect_uri=https://portfolio-bowdenn.wl.r.appspot.com/oauth&scope=profile&state=${state}`
     )
 });
 
@@ -783,11 +624,12 @@ router.get('/oauth', async function (req, res) {
     const tokenResponse = await axios({
         method: 'post',
         url: 'https://oauth2.googleapis.com/token',
+        headers: {'Accept-Encoding': 'application/json'},
         data: {
             code:req.query.code,
             client_id:CLIENT_ID,
             client_secret:CLIENT_SECRET,
-            redirect_uri:'https://a7-bowdenn.wl.r.appspot.com/oauth',
+            redirect_uri:'https://portfolio-bowdenn.wl.r.appspot.com/oauth',
             grant_type:'authorization_code'
         }
     })
@@ -834,6 +676,7 @@ router.get('/oauth', async function (req, res) {
                 max-width: 500px;
             ">
                 <h1 style="font-weight: bold">Profile Information</h1>
+                <p>Use this JWT when making requests to user owned entity endpoints</p>
                 <ul style="list-style:none; padding:0;">
                     <li>Your User ID is: ${userid}</li>
                     <li style="overflow-wrap: anywhere;">Your JWT is: ${tokenResponse.data.id_token}</li>
@@ -843,14 +686,14 @@ router.get('/oauth', async function (req, res) {
     `)
 });
 
-router.get('/boats', function (req, res) {
-    const token = req.get('Authorization')? req.get('Authorization').slice(7): null
+router.get('/boats', checkAndValidateJWT, function (req, res) {
+    // const token = req.get('Authorization')? req.get('Authorization').slice(7): null
 
     if (req.get('Accept') !== 'application/json' && req.get('Accept') !== '*/*'){
         return res.status(406).json({'Error': 'The request is only accepting an unsupported type'})
     }
     else {
-        const boats = get_boats(token, req)
+        const boats = get_boats(req)
             .then((boats) => {
                 if (boats.error) {
                     return res.status(401).json({'Error': boats.error})
@@ -1146,7 +989,6 @@ router.patch('/loads/:id', function (req, res) {
 });
 
 router.put('/boats/:boat_id/loads/:load_id', function (req, res) {
-    // return res.status(200).end();
     put_load_on_boat(req.params.load_id, req.params.boat_id).then(output => {
             if (output === 204) {
                 res.status(204).end()
