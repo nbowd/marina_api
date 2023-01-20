@@ -61,22 +61,16 @@ function onlyLettersandSpaces(str) {
     return /^[A-Za-z\s]*$/.test(str);
 }
 /* ------------- Begin Boat Model Functions ------------- */
-async function post_boat(name, type, length, token) {
-    if (!token) {
-        return {"error": "Invalid or missing token"}
-    }
-    let error = null;
-    let userid = await verify(token, error).catch(e => error = e);
-    if (error) {
-        return {"error": "Invalid or missing token"}
-    }
-    
+async function post_boat(req, name, type, length) {
     var key = datastore.key(BOAT);
-    const boat_info = { "name": name, "type": type, "length": length, "owner": userid, "loads": [], "self": ""};
+    
+    const boat_info = { "name": name, "type": type, "length": length, "owner": req.userid, "loads": [], "self": ""};
     await datastore.save({ "key": key, "data": boat_info })
+    
     const new_info = {...boat_info, "self": "https://portfolio-bowdenn.wl.r.appspot.com/boats/"+ key.id}
     const new_boat = { "key": key, "data": new_info }
     await datastore.save(new_boat)
+    
     return new_boat
 }
 
@@ -580,6 +574,12 @@ function checkUnsupportedTypes(req, res, next) {
     }
     next();    
 }
+function checkContentTypes(req, res, next) {
+    if (req.get('Content-type') !== 'application/json') {
+        return res.status(415).json({'Error': 'The request object is using an unsupported media type. This endpoint accepts only JSON'})
+    }
+    next();    
+}
 
 async function checkAndValidateJWT(req, res, next) {
     const token = req.get('Authorization')? req.get('Authorization').slice(7): null
@@ -709,30 +709,26 @@ router.get('/boats/:id',
             }); 
 });
 
-router.post('/boats', function (req, res) {
-    const token = req.get('Authorization')? req.get('Authorization').slice(7): null
-
-    if (req.get('Content-type') !== 'application/json') {
-        return res.status(415).json({'Error': 'The request object is using an unsupported media type. This endpoint accepts only JSON'})
-    }
-    else if (req.get('Accept') !== 'application/json' && req.get('Accept') !== '*/*'){
-        return res.status(406).json({'Error': 'The request is only accepting an unsupported type'})
-    }
-    else if (!req.body.name || !req.body.type || !req.body.length) {
-        return res.status(400).json({ 'Error': 'The request object is missing at least one of the required attributes' });
-    }
-    else {
-
-        post_boat(req.body.name, req.body.type, req.body.length, token)
+router.post('/boats', 
+    checkAndValidateJWT, 
+    checkContentTypes, 
+    checkUnsupportedTypes, 
+    function (req, res) {
+        if (!req.body.name || !req.body.type || !req.body.length) {
+            res.status(400).json({ 'Error': 'The request object is missing at least one of the required attributes' });
+            return
+        }
+        post_boat(req, req.body.name, req.body.type, req.body.length)
             .then(boat => { 
-                if (boat.error){
-                    return res.status(401).json({'Error': boat.error})
-                }
-                else {
-                    res.status(201).json({ "id": boat.key.id, "name": boat.data.name , "type": boat.data.type, "length": boat.data.length, "owner": boat.data.owner, "loads": boat.data.loads, "self": boat.data.self}) 
-                }
+                res.status(201).json({ 
+                    "id": boat.key.id, 
+                    "name": boat.data.name , 
+                    "type": boat.data.type, 
+                    "length": boat.data.length, 
+                    "owner": boat.data.owner, 
+                    "loads": boat.data.loads, 
+                    "self": boat.data.self})
             });
-    }
 });
 
 router.put('/boats/:id', function (req, res) {
