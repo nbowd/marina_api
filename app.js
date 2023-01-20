@@ -925,16 +925,13 @@ router.delete('/loads/:id', function (req, res) {
 /* ------------- End Loads Controller Functions ------------- */
 
 /* ------------- Begin Users Controller Functions ------------- */
-router.get('/users', function (req, res) {
-    if (req.get('Accept') !== 'application/json' && req.get('Accept') !== '*/*'){
-        return res.status(406).json({'Error': 'The request is only accepting an unsupported type'})
-    }
-    else {
-        const users = get_users()
+router.get('/users', 
+    checkUnsupportedTypes,
+    function (req, res) {
+        get_users()
             .then((users) => {
                 res.status(200).json(users);
             });
-    };
 });
 
 router.put('/users/:id', function (req, res) {
