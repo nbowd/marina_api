@@ -130,46 +130,8 @@ async function put_boat(req, id, name, type, length) {
     })    
 }
 
-async function patch_boat(id, name, type, length, token) {
-    if (!token) {
-        return 401
-    }
-
-    let error = null;
-    let userid = await verify(token, error).catch(e => error = e);
-    if (error) {
-        return 401
-    }
-
+async function patch_boat(req, id, name, type, length) {
     const key = datastore.key([BOAT, parseInt(id, 10)]);
-
-    if (name && typeof name !== "string"){
-        return 'invalid name'
-    }
-
-    if (name && (name.length < 2 || name.length > 64)) {
-        return 'invalid name'
-    }
-
-    if (name && !onlyLettersAndNumbersandSpaces(name)){
-        return 'invalid name'
-    }
-
-    if (type && typeof type !== "string") {
-        return 'invalid type'
-    }
-
-    if (type && !onlyLettersandSpaces(type)) {
-        return 'invalid type'
-    }
-
-    if (type && (type.length < 2 || type.length > 30)) {
-        return 'invalid type'
-    }
-
-    if (length && typeof length !== "number"){
-        return 'invalid length'
-    }
 
     let invalid_boat = false;
     let current_boat = null;
@@ -185,26 +147,23 @@ async function patch_boat(id, name, type, length, token) {
         return 404
     }
 
-    if (current_boat.owner !== userid) {
+    if (current_boat.owner !== req.userid) {
         return 403
     }
 
-    const boat = {...current_boat, "name": name? name: current_boat.name, "type": type? type: current_boat.type, "length": length? length: current_boat.length, "self": current_boat.self };
+    const boat = {
+        ...current_boat, 
+        "name": name? name: current_boat.name, 
+        "type": type? type: current_boat.type, 
+        "length": length? length: current_boat.length, 
+        "self": current_boat.self 
+    };
     
     await datastore.save({ "key": key, "data": boat });
     return boat  
 }
 
-async function delete_boat(id,token) {
-    if (!token) {
-        return {"error": "Invalid or missing token"}
-    }
-
-    let error = null;
-    let userid = await verify(token, error).catch(e => error = e);
-    if (error) {
-        return {"error": "Invalid or missing token"}
-    }
+async function delete_boat(req, id) {
     const key = datastore.key([BOAT, parseInt(id, 10)]);
 
     let invalid_boat = null;
@@ -223,7 +182,7 @@ async function delete_boat(id,token) {
         return 404
     }
 
-    if (current_boat.owner !== userid) {
+    if (current_boat.owner !== req.userid) {
         return 403
     }
     let current_load = null;
@@ -770,66 +729,44 @@ router.put('/boats/:id',
         }
 );
 
-router.patch('/boats/:id', function (req, res) {
-    const token = req.get('Authorization')? req.get('Authorization').slice(7): null
-
-    if (req.get('Content-type') !== 'application/json') {
-        return res.status(415).json({'Error': 'The request object is using an unsupported media type. This endpoint accepts only JSON'})
-    }
-    else if (req.get('Accept') !== 'application/json' && req.get('Accept') !== '*/*'){
-        return res.status(406).json({'Error': 'The request is only accepting an unsupported type'})
-    }
-    else if (Object.keys(req.body).length > 3) {
-        return res.status(400).json({ 'Error': 'The request object has too many attributes. Must contain exactly: name, type, length' });
-    }
-    else if (req.body.id) {
-        return res.status(400).json({'Error': 'Editing the id of the boat is not allowed'})
-    }
-    else {
-    patch_boat(req.params.id, req.body.name, req.body.type, req.body.length, token)
-        .then(boat => {
-            if (boat === 401) {
-                return res.status(401).json({'Error': "Invalid or missing token"})
-            }
-            if (boat === 404) {
-                res.status(404).json({ 'Error': 'No boat with this boat_id exists' });                
-            }
-            else if (boat === 403) {
-                res.status(403).json({'Error': 'Not authorized to edit this boat'})
-            }
-            else if (boat === 'invalid name') {
-                return res.status(400).json({'Error': 'Invalid name: must be alphanumeric/spaces and between 2 and 64 characters long'})
-            }
-            else if (boat === 'invalid type'){
-                return res.status(400).json({'Error': 'Invalid type: must contain only letters/spaces and between 2 and 30 characters long'})
-            }
-            else if (boat === 'invalid length') {
-                return res.status(400).json({'Error': 'Invalid length: must be a number'})
-            }
-            else {
-                res.status(200).json(boat);
-            }
-        });
-    }
+router.patch('/boats/:id', 
+    checkAndValidateJWT, 
+    checkContentTypes, 
+    checkUnsupportedTypes,
+    checkAndValidateBoatAttributes,    
+    function (req, res) {
+        patch_boat(req, req.params.id, req.body.name, req.body.type, req.body.length)
+            .then(boat => {
+                if (boat === 404) {
+                    res.status(404).json({ 'Error': 'No boat with this boat_id exists' });                
+                }
+                else if (boat === 403) {
+                    res.status(403).json({'Error': 'Not authorized to edit this boat'})
+                }
+                else {
+                    res.status(200).json(boat);
+                }
+            });
 });
 
-router.delete('/boats/:id', function (req, res) {
-    const token = req.get('Authorization')? req.get('Authorization').slice(7): null
-
-    delete_boat(req.params.id, token).then( output => {
-        if (output.error) {
-            return res.status(401).json({'Error': output.error})
-        }
-        if (output === 204) {
-            res.status(204).end()
-        } 
-        else if (output === 403) {
-            res.status(403).json({"Error": "Not authorized to delete this boat"})
-        }
-        else {
-            res.status(404).json({ 'Error': 'No boat with this boat_id exists' });
-        }
-    })
+router.delete('/boats/:id', 
+    checkAndValidateJWT,
+    function (req, res) {
+        delete_boat(req, req.params.id)
+            .then( output => {
+                if (output === 403) {
+                    res.status(403).json({"Error": "Not authorized to delete this boat"});
+                    return
+                }
+                if (output === 404) {
+                    res.status(404).json({ 'Error': 'No boat with this boat_id exists' });
+                    return
+                }
+                if (output === 204) {
+                    res.status(204).end()
+                    return
+                } 
+            })
 });
 
 
