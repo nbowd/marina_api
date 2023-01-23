@@ -12,4 +12,4 @@ Full featured Marina API that models users, boats, and loads. Allowing registere
 # Documentation
 
 Please refer to the API spec for more detailed usage information for each endpoint. 
-[API Documentation](../blob/main/marina_API_documentation.pdf)
+[API Documentation](../main/marina_API_documentation.pdf)
